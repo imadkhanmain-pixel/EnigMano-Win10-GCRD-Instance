@@ -72,7 +72,7 @@ jobs:
             if ($env:RETRIES_INPUT) { try { $retries = [int]$env:RETRIES_INPUT } catch {} }
             $dlAttempts = [Math]::Max(3, $retries)
 
-            # Define User-Agent to bypass VB-Audio bot protection
+            # Fake User-Agent to help with other downloads
             $headers = @{
                 "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
@@ -80,7 +80,8 @@ jobs:
             $assets = @(
               @{ Url = "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi"; Name = "crdhost.msi" },
               @{ Url = "https://downloads.cloudflareclient.com/v1/download/windows/ga"; Name = "Cloudflare_WARP_x64.msi" },
-              @{ Url = "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip"; Name = "VBCABLE.zip" },
+              # 🔽 SKIPPED: VB-Audio Cable (Causes connection refused errors)
+              # @{ Url = "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip"; Name = "VBCABLE.zip" },
               @{ Url = "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user"; Name = "VisualStudio.exe" },
               @{ Url = "https://nodejs.org/dist/v24.11.0/node-v24.11.0-x64.msi"; Name = "node-v24.msi" }
             )
@@ -88,7 +89,6 @@ jobs:
             function Download-Quiet([string]$Url,[string]$OutFile,[int]$Attempts,[hashtable]$Headers) {
               for ($i=1; $i -le $Attempts; $i++) {
                 try {
-                  # Added Headers parameter here
                   Invoke-WebRequest -Uri $Url -OutFile $OutFile -Headers $Headers -UseBasicParsing -TimeoutSec 120
                   if ((Test-Path -LiteralPath $OutFile) -and ((Get-Item $OutFile).Length -gt 0)) { return }
                   throw "Downloaded file missing or zero-size."
@@ -117,7 +117,6 @@ jobs:
           $ProgressPreference = 'SilentlyContinue'
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-          # Define headers again for this scope
           $headers = @{
               "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
           }
@@ -138,8 +137,7 @@ jobs:
               -GateSecret ($env:EnigMano_Access_Token)
               
             Write-Host "==============================================="
-            Write-Host "🪄 EnigMano Windows 10 (Sound Enabled)"
-            Write-Host "🪄 https://www.youtube.com/@ShahzaibYT-itxsb"
+            Write-Host "🪄 EnigMano Windows 10 (Sound Disabled via Workflow)"
             Write-Host "🪄 Powered by: Shahzaib-YT"
             Write-Host "==============================================="
           } catch {
