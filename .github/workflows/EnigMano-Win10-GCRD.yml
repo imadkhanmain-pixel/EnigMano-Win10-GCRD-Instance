@@ -28,14 +28,14 @@ jobs:
     runs-on: windows-2022
 
     env:
-      RAW_CODE:      ${{ github.event.inputs.CODE }}
-      PIN_INPUT:     ${{ github.event.inputs.PIN }}
+      RAW_CODE: ${{ github.event.inputs.CODE }}
+      PIN_INPUT: ${{ github.event.inputs.PIN }}
       RETRIES_INPUT: ${{ github.event.inputs.RETRIES }}
-      BRANCH:        ${{ github.ref_name }}
-      RUNNER_ENV:    "hosted"
+      BRANCH: ${{ github.ref_name }}
+      RUNNER_ENV: "hosted"
       EnigMano_Access_Token: ${{ secrets.EnigMano_Access_Token }}
-      # Target Python Path
-      TARGET_PY: "C:\hostedtoolcache\windows\Python\3.14.2\x64"
+      # Use forward slashes or double backslashes to avoid YAML syntax errors
+      TARGET_PY: "C:/hostedtoolcache/windows/Python/3.14.2/x64"
 
     defaults:
       run:
@@ -44,23 +44,21 @@ jobs:
     steps:
       - name: "🐍 Force Python 3.14.2 & Purge Others"
         run: |
-          Write-Host "Checking for Python 3.14.2 at $env:TARGET_PY..."
+          $pyPath = $env:TARGET_PY.Replace("/", "\")
+          Write-Host "Checking for Python 3.14.2 at $pyPath..."
           
-          if (Test-Path $env:TARGET_PY) {
-              # 1. Remove all existing Python entries from the current session path
+          if (Test-Path $pyPath) {
               $CurrentPath = $env:PATH -split ';'
               $CleanedPath = ($CurrentPath | Where-Object { $_ -notmatch 'Python' }) -join ';'
-              $env:PATH = "$env:TARGET_PY;$env:TARGET_PY\Scripts;$CleanedPath"
+              $env:PATH = "$pyPath;$pyPath\Scripts;$CleanedPath"
               
-              # 2. Update GITHUB_PATH so all following steps use 3.14.2
-              # We put it at the top so it takes priority over system defaults
-              echo "$env:TARGET_PY" >> $env:GITHUB_PATH
-              echo "$env:TARGET_PY\Scripts" >> $env:GITHUB_PATH
+              echo "$pyPath" >> $env:GITHUB_PATH
+              echo "$pyPath\Scripts" >> $env:GITHUB_PATH
               
               Write-Host "✅ Path updated. Current Version:"
               python --version
           } else {
-              Write-Error "❌ Python 3.14.2 not found at $env:TARGET_PY."
+              Write-Error "❌ Python 3.14.2 not found at $pyPath."
               Write-Host "Available versions in cache:"
               Get-ChildItem "C:\hostedtoolcache\windows\Python\" | Select-Object Name
               exit 1
@@ -75,7 +73,6 @@ jobs:
           Write-Host "💻 OS Version        : $env:ImageOS"
           Write-Host "🐍 Active Python     : $(python --version)"
           Write-Host "🧠 Runner Machine    : $env:RUNNER_NAME"
-          Write-Host "🌿 Branch/Ref        : $env:BRANCH"
           Write-Host "==============================================="
 
           if ($env:RAW_CODE)  { Write-Host "::add-mask::$($env:RAW_CODE)" }
@@ -89,10 +86,6 @@ jobs:
           $userDownloads = Join-Path $env:USERPROFILE 'Downloads'
           if (-not (Test-Path $userDownloads)) { New-Item -ItemType Directory -Path $userDownloads | Out-Null }
 
-          $headers = @{
-              "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-          }
-
           $assets = @(
             @{ Url = "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi"; Name = "crdhost.msi" },
             @{ Url = "https://downloads.cloudflareclient.com/v1/download/windows/ga"; Name = "Cloudflare_WARP_x64.msi" },
@@ -103,7 +96,7 @@ jobs:
           foreach ($a in $assets) {
             $dest = Join-Path $userDownloads $a.Name
             Write-Host "⬇️ Downloading $($a.Name)..."
-            Invoke-WebRequest -Uri $a.Url -OutFile $dest -Headers $headers -UseBasicParsing -TimeoutSec 120
+            Invoke-WebRequest -Uri $a.Url -OutFile $dest -UseBasicParsing -TimeoutSec 120
           }
 
       - name: "🌟 EnigMano Magical Setup & Execution"
@@ -111,15 +104,12 @@ jobs:
           $scriptName = "EnigMano-GCRD-Instance.ps1"
           $url = "https://gitlab.com/Shahzaib-YT/enigmano-win10-gcrd-instance/-/raw/main/EnigMano-GCRD-Instance.ps1"
           
-          Write-Host "⬇️ Downloading script..."
           Invoke-WebRequest -Uri $url -OutFile $scriptName -UseBasicParsing -TimeoutSec 120
 
-          Write-Host "🩹 Patching script to ignore audio errors..."
           $content = Get-Content $scriptName -Raw
           $content = $content -replace 'Fail "Phase Audio', 'Write-Warning "⚠️ Skipped Audio (Patched by Workflow)'
           Set-Content -Path $scriptName -Value $content
 
-          Write-Host "🚀 Executing with Python $(python --version)..."
           powershell.exe -ExecutionPolicy Bypass -File ".\$scriptName" `
             -Code ($env:RAW_CODE) `
             -Pin ($env:PIN_INPUT) `
