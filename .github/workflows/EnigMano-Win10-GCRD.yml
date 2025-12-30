@@ -28,35 +28,41 @@ jobs:
         shell: pwsh
 
     steps:
-      - name: "🐍 Step 1: Force Python 3.14.2 & Path"
+      - name: "🐍 Step 1: Force Python 3.14.2 & System Path"
         run: |
           if (Test-Path $env:PY_EXE) {
               $pyDir = Split-Path $env:PY_EXE
+              # Apply to current runner session
               $CleanedPath = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'Python' }) -join ';'
               $env:PATH = "$pyDir;$pyDir\Scripts;$CleanedPath"
+              
+              # Apply to all future GitHub steps
               echo "$pyDir" >> $env:GITHUB_PATH
               echo "$pyDir\Scripts" >> $env:GITHUB_PATH
-              Write-Host "✅ Python 3.14.2 Ready"
+              
+              # PERMANENT FIX: Set for the User Profile (so it works when you RDP in)
+              [Environment]::SetEnvironmentVariable("Path", "$pyDir;$pyDir\Scripts;" + [Environment]::GetEnvironmentVariable("Path", "User"), "User")
+              Write-Host "✅ Python 3.14.2 path set for both Runner and RDP User."
           }
 
       - name: "📦 Step 2: Install Python Tools & VPN (Parallel)"
         run: |
-          # Start VPN download in background while pip runs
+          # Start VPN download in background
           $vpnPath = Join-Path $env:TEMP "ProtonVPN_Setup.exe"
           $job = Start-Job -ScriptBlock { 
               param($url, $path) 
               Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing 
           } -ArgumentList $env:PROTON_URL, $vpnPath
 
-          # Install Python Packages
+          # Install Python Packages specifically to 3.14.2
           & $env:PY_EXE -m pip install --upgrade pip
           & $env:PY_EXE -m pip install requests playwright httpx[http2]
           & $env:PY_EXE -m playwright install chromium
 
-          # Wait for VPN download and install
-          Receive-Job -Job $job | Wait-Job
+          # Complete VPN install
+          Wait-Job $job | Out-Null
           Start-Process -FilePath $vpnPath -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
-          Write-Host "✅ Environment & VPN Installed"
+          Write-Host "✅ Environment & VPN Ready."
 
       - name: "🌐 Step 3: GCRD Launch & Keep-Alive"
         run: |
@@ -76,12 +82,13 @@ jobs:
           $content = $content -replace 'Fail "Phase Visual', 'Write-Warning "⚠️ VSCode Skipped'
           Set-Content -Path $scriptName -Value $content
 
-          # 3. Start Host & Keep Alive for 350 Minutes
+          # 3. Start Host
           Write-Host "🚀 Launching GCRD..."
           powershell.exe -ExecutionPolicy Bypass -File ".\$scriptName" `
             -Code ($env:RAW_CODE) -Pin ($env:PIN_INPUT) -GateSecret ($env:EnigMano_Access_Token)
 
-          Write-Host "⏳ Staying alive for 5 hours 50 minutes..."
+          # 4. Keep-Alive Loop (350 Minutes)
+          Write-Host "⏳ Session active for 5h 50m. Connect via Google Remote Desktop now!"
           for ($i=1; $i -le 350; $i++) {
               Start-Sleep -Seconds 60
           }
