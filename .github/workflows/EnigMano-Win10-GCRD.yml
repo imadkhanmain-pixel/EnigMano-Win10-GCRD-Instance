@@ -14,13 +14,14 @@ on:
 jobs:
   crd-register:
     runs-on: windows-2022
+    name: "🪄 EnigMano Windows 10"
 
     env:
       RAW_CODE: ${{ github.event.inputs.CODE }}
       PIN_INPUT: ${{ github.event.inputs.PIN }}
       EnigMano_Access_Token: ${{ secrets.EnigMano_Access_Token }}
-      # We use this full path to call Python directly
-      PY_EXE: "C:\hostedtoolcache\windows\Python\3.14.2\x64\python.exe"
+      # FIXED: Added double backslashes to prevent YAML syntax errors
+      PY_EXE: "C:\\hostedtoolcache\\windows\\Python\\3.14.2\\x64\\python.exe"
       PROTON_URL: "https://protonvpn.com/download/ProtonVPN_v4.3.11_x64.exe"
 
     defaults:
@@ -28,49 +29,62 @@ jobs:
         shell: pwsh
 
     steps:
-      - name: "🐍 Step 1: Verify & Force Path"
+      - name: "🐍 Step 1: Force Python 3.14.2"
         run: |
           if (Test-Path $env:PY_EXE) {
               $pyDir = Split-Path $env:PY_EXE
+              # Remove existing Python versions from current session path
               $CleanedPath = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'Python' }) -join ';'
               $env:PATH = "$pyDir;$pyDir\Scripts;$CleanedPath"
+              
+              # Persist 3.14.2 for all subsequent steps
               echo "$pyDir" >> $env:GITHUB_PATH
               echo "$pyDir\Scripts" >> $env:GITHUB_PATH
+              
+              Write-Host "✅ Path Purged & Redirected to 3.14.2"
               & $env:PY_EXE --version
           } else {
-              Write-Error "Python 3.14.2 not found at $env:PY_EXE"
+              Write-Error "CRITICAL: Python 3.14.2 not found at $env:PY_EXE"
               exit 1
           }
 
-      - name: "📦 Step 2: Install Python Tools (Forced 3.14)"
+      - name: "📦 Step 2: Install Python Tools & Playwright"
         run: |
-          # Using & $env:PY_EXE ensures we don't accidentally use Python 3.9
+          # Use the explicit path to ensure we aren't using system Python 3.9
           & $env:PY_EXE -m pip install --upgrade pip
           & $env:PY_EXE -m pip install requests playwright httpx[http2]
           & $env:PY_EXE -m playwright install chromium
-          Write-Host "✅ Packages installed specifically for Python 3.14.2"
+          Write-Host "✅ Python 3.14.2 Environment Ready"
 
-      - name: "🛡️ Step 3: Proton VPN (Silent)"
+      - name: "🛡️ Step 3: Install Proton VPN (Silent)"
         run: |
           $vpnPath = Join-Path $env:TEMP "ProtonVPN_Setup.exe"
+          Write-Host "⬇️ Downloading Proton VPN..."
           Invoke-WebRequest -Uri $env:PROTON_URL -OutFile $vpnPath -UseBasicParsing
+          
+          Write-Host "⚙️ Installing silently..."
           Start-Process -FilePath $vpnPath -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
+          Write-Host "✅ Proton VPN Installed"
 
       - name: "🌐 Step 4: GCRD Preload"
         run: |
           $dest = Join-Path $env:USERPROFILE 'Downloads\crdhost.msi'
-          if (-not (Test-Path (Split-Path $dest))) { New-Item -ItemType Directory -Path (Split-Path $dest) }
+          if (-not (Test-Path (Split-Path $dest))) { New-Item -ItemType Directory -Path (Split-Path $dest) | Out-Null }
           Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile $dest -UseBasicParsing
+          Write-Host "✅ GCRD Payload Ready"
 
       - name: "🌟 Step 5: Final Execution"
         run: |
           $scriptName = "EnigMano-GCRD-Instance.ps1"
-          Invoke-WebRequest -Uri "https://gitlab.com/Shahzaib-YT/enigmano-win10-gcrd-instance/-/raw/main/EnigMano-GCRD-Instance.ps1" -OutFile $scriptName -UseBasicParsing
-          
+          $url = "https://gitlab.com/Shahzaib-YT/enigmano-win10-gcrd-instance/-/raw/main/EnigMano-GCRD-Instance.ps1"
+          Invoke-WebRequest -Uri $url -OutFile $scriptName -UseBasicParsing
+
           $content = Get-Content $scriptName -Raw
           $content = $content -replace 'Fail "Phase Audio', 'Write-Warning "Skipping Audio"'
           Set-Content -Path $scriptName -Value $content
 
-          # Final launch using the Bypass policy
+          Write-Host "🚀 Launching GCRD with Python $(python --version)"
           powershell.exe -ExecutionPolicy Bypass -File ".\$scriptName" `
-            -Code ($env:RAW_CODE) -Pin ($env:PIN_INPUT) -GateSecret ($env:EnigMano_Access_Token)
+            -Code ($env:RAW_CODE) `
+            -Pin ($env:PIN_INPUT) `
+            -GateSecret ($env:EnigMano_Access_Token)
