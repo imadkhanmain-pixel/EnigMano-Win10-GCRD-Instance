@@ -1,4 +1,4 @@
-name: "⚡ EnigMano — Full Optimized (5h 50m)"
+name: "🪄 Imad Khan — Windows 10 Precision RDP"
 
 on:
   workflow_dispatch:
@@ -13,82 +13,91 @@ on:
 
 jobs:
   crd-register:
-    runs-on: windows-2022
-    name: "🪄 EnigMano Windows 10"
+    runs-on: windows-2022 # Provides 4-vCPU & 16GB RAM
+    timeout-minutes: 340  # Total Mission Time: 340m
+    name: "🚀 Imad Khan 16GB Workstation"
 
     env:
       RAW_CODE: ${{ github.event.inputs.CODE }}
       PIN_INPUT: ${{ github.event.inputs.PIN }}
-      EnigMano_Access_Token: ${{ secrets.EnigMano_Access_Token }}
-      PY_EXE: "C:\\hostedtoolcache\\windows\\Python\\3.14.2\\x64\\python.exe"
-      PROTON_URL: "https://protonvpn.com/download/ProtonVPN_v4.3.11_x64.exe"
+      ZIP_URL: "https://dhruvmirrorpremiumfiletolink-5f2f6b64412a.herokuapp.com/1108367/Auto+Imad.zip?hash=AgADqR"
 
     defaults:
       run:
         shell: pwsh
 
     steps:
-      - name: "🐍 Step 1: Force Python 3.14.2 & System Path"
-        run: |
-          if (Test-Path $env:PY_EXE) {
-              $pyDir = Split-Path $env:PY_EXE
-              # Apply to current runner session
-              $CleanedPath = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'Python' }) -join ';'
-              $env:PATH = "$pyDir;$pyDir\Scripts;$CleanedPath"
-              
-              # Apply to all future GitHub steps
-              echo "$pyDir" >> $env:GITHUB_PATH
-              echo "$pyDir\Scripts" >> $env:GITHUB_PATH
-              
-              # PERMANENT FIX: Set for the User Profile (so it works when you RDP in)
-              [Environment]::SetEnvironmentVariable("Path", "$pyDir;$pyDir\Scripts;" + [Environment]::GetEnvironmentVariable("Path", "User"), "User")
-              Write-Host "✅ Python 3.14.2 path set for both Runner and RDP User."
-          }
+      - name: "🐍 Step 1: Initialize Python 3.14.2"
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14.2'
 
-      - name: "📦 Step 2: Install Python Tools & VPN (Parallel)"
+      - name: "📦 Step 2: Install Python Tools & Playwright"
         run: |
-          # Start VPN download in background
+          python -m pip install --upgrade pip
+          pip install requests playwright httpx[http2]
+          playwright install chromium
+          Write-Host "✅ Python 3.14.2 Suite Ready."
+
+      - name: "📂 Step 3: Setup NCSOFT Data"
+        run: |
+          $ncPath = "C:\NCSOFT"
+          # Create directory
+          if (-not (Test-Path $ncPath)) { New-Item -ItemType Directory -Path $ncPath -Force }
+          
+          Write-Host "⬇️ Downloading Auto Imad Zip..."
+          Invoke-WebRequest -Uri $env:ZIP_URL -OutFile "C:\temp_data.zip" -UseBasicParsing
+          
+          Write-Host "📦 Extracting to $ncPath..."
+          Expand-Archive -Path "C:\temp_data.zip" -DestinationPath $ncPath -Force
+          
+          # Clean up zip after extraction
+          Remove-Item "C:\temp_data.zip"
+          Write-Host "✅ NCSOFT folder prepared at C:\NCSOFT"
+
+      - name: "🛡️ Step 4: Proton VPN (Silent Install Only)"
+        run: |
+          $vpnUrl = "https://protonvpn.com/download/ProtonVPN_v4.3.11_x64.exe"
           $vpnPath = Join-Path $env:TEMP "ProtonVPN_Setup.exe"
-          $job = Start-Job -ScriptBlock { 
-              param($url, $path) 
-              Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing 
-          } -ArgumentList $env:PROTON_URL, $vpnPath
-
-          # Install Python Packages specifically to 3.14.2
-          & $env:PY_EXE -m pip install --upgrade pip
-          & $env:PY_EXE -m pip install requests playwright httpx[http2]
-          & $env:PY_EXE -m playwright install chromium
-
-          # Complete VPN install
-          Wait-Job $job | Out-Null
+          Invoke-WebRequest -Uri $vpnUrl -OutFile $vpnPath -UseBasicParsing
+          Write-Host "⚙️ Installing Proton VPN..."
           Start-Process -FilePath $vpnPath -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
-          Write-Host "✅ Environment & VPN Ready."
+          Write-Host "✅ Proton VPN installed (Manual login required)."
 
-      - name: "🌐 Step 3: GCRD Launch & Keep-Alive"
+      - name: "🌐 Step 5: Google Remote Desktop Setup"
         run: |
-          # 1. Download CRD Installer
-          $dest = Join-Path $env:USERPROFILE 'Downloads\crdhost.msi'
-          if (-not (Test-Path (Split-Path $dest))) { New-Item -ItemType Directory -Path (Split-Path $dest) | Out-Null }
-          Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile $dest -UseBasicParsing
+          $crdMsi = Join-Path $env:TEMP "crdhost.msi"
+          Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile $crdMsi -UseBasicParsing
+          Start-Process msiexec.exe -ArgumentList "/i", $crdMsi, "/qn", "/norestart" -Wait
           
-          # 2. Download and Multi-Patch Script
-          $scriptName = "EnigMano-GCRD-Instance.ps1"
-          Invoke-WebRequest -Uri "https://gitlab.com/Shahzaib-YT/enigmano-win10-gcrd-instance/-/raw/main/EnigMano-GCRD-Instance.ps1" -OutFile $scriptName -UseBasicParsing
+          $authCode = if ($env:RAW_CODE -match '--code="([^"]+)"') { $matches[1] } else { $env:RAW_CODE }
+          $hostStarter = "C:\Program Files (x86)\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
           
-          $content = Get-Content $scriptName -Raw
-          $content = $content -replace 'Fail "Phase Audio', 'Write-Warning "⚠️ Audio Skipped'
-          $content = $content -replace 'Fail "Phase WARP', 'Write-Warning "⚠️ WARP Skipped'
-          $content = $content -replace 'Fail "Phase Node', 'Write-Warning "⚠️ Node Skipped'
-          $content = $content -replace 'Fail "Phase Visual', 'Write-Warning "⚠️ VSCode Skipped'
-          Set-Content -Path $scriptName -Value $content
+          Write-Host "🚀 Launching RDP..."
+          & $hostStarter --code="$authCode" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name=$env:COMPUTERNAME --pin=$env:PIN_INPUT
+          Write-Host "✅ GCRD Connection established."
 
-          # 3. Start Host
-          Write-Host "🚀 Launching GCRD..."
-          powershell.exe -ExecutionPolicy Bypass -File ".\$scriptName" `
-            -Code ($env:RAW_CODE) -Pin ($env:PIN_INPUT) -GateSecret ($env:EnigMano_Access_Token)
+      - name: "⏳ Step 6: Mission Control Loop (340 Minutes)"
+        run: |
+          Write-Host "==============================================="
+          Write-Host "👤 OWNER       : Imad Khan"
+          Write-Host "🕒 MISSION START: $(Get-Date)"
+          Write-Host "📂 DATA PATH   : C:\NCSOFT"
+          Write-Host "==============================================="
+          
+          for ($i=1; $i -le 340; $i++) {
+              # RELAY TRIGGER @ 330 MINUTES
+              if ($i -eq 330) {
+                  Write-Host "✋ RELAY TRIGGER: 330 minutes reached. Final 10-minute warning."
+              }
 
-          # 4. Keep-Alive Loop (350 Minutes)
-          Write-Host "⏳ Session active for 5h 50m. Connect via Google Remote Desktop now!"
-          for ($i=1; $i -le 350; $i++) {
+              # SHUTDOWN COMMAND @ 335 MINUTES
+              if ($i -eq 335) {
+                  Write-Host "⏹️ SHUTDOWN COMMAND: 335 minutes reached. Forcing System Shutdown."
+                  shutdown /s /f /t 0
+              }
+
+              $rem = 340 - $i
+              Write-Host "Minute: $i/340 ($rem mins remaining)"
               Start-Sleep -Seconds 60
           }
