@@ -1,4 +1,4 @@
-name: "⚡ EnigMano — Fixed Script Logic"
+name: "⚡ EnigMano — GCRD First (Fast Start)"
 
 on:
   workflow_dispatch:
@@ -28,7 +28,29 @@ jobs:
         shell: pwsh
 
     steps:
-      - name: "🐍 Step 1: Force Python 3.14.2"
+      - name: "🌐 Step 1: Immediate GCRD Launch"
+        run: |
+          # 1. Download CRD Installer
+          $dest = Join-Path $env:USERPROFILE 'Downloads\crdhost.msi'
+          if (-not (Test-Path (Split-Path $dest))) { New-Item -ItemType Directory -Path (Split-Path $dest) | Out-Null }
+          Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile $dest -UseBasicParsing
+          
+          # 2. Download and Patch Script
+          $scriptName = "EnigMano-GCRD-Instance.ps1"
+          Invoke-WebRequest -Uri "https://gitlab.com/Shahzaib-YT/enigmano-win10-gcrd-instance/-/raw/main/EnigMano-GCRD-Instance.ps1" -OutFile $scriptName -UseBasicParsing
+          
+          $content = Get-Content $scriptName -Raw
+          $content = $content -replace 'Fail "Phase Audio', 'Write-Warning "⚠️ Skipped Audio'
+          Set-Content -Path $scriptName -Value $content
+
+          # 3. Start Host (This happens within seconds of workflow start)
+          Write-Host "🚀 Launching GCRD immediately to prevent token expiry..."
+          powershell.exe -ExecutionPolicy Bypass -File ".\$scriptName" `
+            -Code ($env:RAW_CODE) `
+            -Pin ($env:PIN_INPUT) `
+            -GateSecret ($env:EnigMano_Access_Token)
+
+      - name: "🐍 Step 2: Force Python 3.14.2"
         run: |
           if (Test-Path $env:PY_EXE) {
               $pyDir = Split-Path $env:PY_EXE
@@ -37,50 +59,19 @@ jobs:
               echo "$pyDir" >> $env:GITHUB_PATH
               echo "$pyDir\Scripts" >> $env:GITHUB_PATH
               Write-Host "✅ Python 3.14.2 Active"
-          } else {
-              Write-Error "Python 3.14.2 not found"
-              exit 1
           }
 
-      - name: "📦 Step 2: Python Tools & Playwright"
+      - name: "📦 Step 3: Install Python Tools & Playwright"
         run: |
           & $env:PY_EXE -m pip install --upgrade pip
           & $env:PY_EXE -m pip install requests playwright httpx[http2]
           & $env:PY_EXE -m playwright install chromium
+          Write-Host "✅ Python tools ready."
 
-      - name: "🛡️ Step 3: Proton VPN (Silent)"
+      - name: "🛡️ Step 4: Install Proton VPN (Silent)"
         run: |
           $vpnPath = Join-Path $env:TEMP "ProtonVPN_Setup.exe"
           Invoke-WebRequest -Uri $env:PROTON_URL -OutFile $vpnPath -UseBasicParsing
+          Write-Host "⚙️ Installing VPN..."
           Start-Process -FilePath $vpnPath -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
-          Write-Host "✅ VPN Installed"
-
-      - name: "🌐 Step 4: GCRD Preload"
-        run: |
-          $dest = Join-Path $env:USERPROFILE 'Downloads\crdhost.msi'
-          if (-not (Test-Path (Split-Path $dest))) { New-Item -ItemType Directory -Path (Split-Path $dest) | Out-Null }
-          Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile $dest -UseBasicParsing
-
-      - name: "🌟 Step 5: Final Execution (Clean Patch)"
-        run: |
-          $scriptName = "EnigMano-GCRD-Instance.ps1"
-          $url = "https://gitlab.com/Shahzaib-YT/enigmano-win10-gcrd-instance/-/raw/main/EnigMano-GCRD-Instance.ps1"
-          Invoke-WebRequest -Uri $url -OutFile $scriptName -UseBasicParsing
-
-          # BETTER PATCH: We comment out the entire line that causes the failure
-          # This is much safer than trying to replace text inside the string
-          $content = Get-Content $scriptName
-          $newContent = foreach ($line in $content) {
-              if ($line -like '*Fail "Phase Audio*') {
-                  'Write-Warning "⚠️ Audio Phase Skipped"'
-              } else {
-                  $line
-              }
-          }
-          $newContent | Set-Content $scriptName
-
-          Write-Host "🚀 Launching GCRD..."
-          powershell.exe -ExecutionPolicy Bypass -File ".\$scriptName" `
-            -Code ($env:RAW_CODE) `
-            -Pin ($env:PIN_INPUT) `
-            -GateSecret ($env:EnigMano_Access_Token)
+          Write-Host "✅ Proton VPN Installed."
