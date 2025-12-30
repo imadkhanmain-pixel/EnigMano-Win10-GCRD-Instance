@@ -1,4 +1,4 @@
-name: "⚡ EnigMano — GCRD First (Fast Start)"
+name: "⚡ EnigMano — Full Lean (6-Hour Session)"
 
 on:
   workflow_dispatch:
@@ -28,27 +28,28 @@ jobs:
         shell: pwsh
 
     steps:
-      - name: "🌐 Step 1: Immediate GCRD Launch"
+      - name: "🌐 Step 1: Immediate GCRD & Multi-Patch"
         run: |
           # 1. Download CRD Installer
           $dest = Join-Path $env:USERPROFILE 'Downloads\crdhost.msi'
           if (-not (Test-Path (Split-Path $dest))) { New-Item -ItemType Directory -Path (Split-Path $dest) | Out-Null }
           Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile $dest -UseBasicParsing
           
-          # 2. Download and Patch Script
+          # 2. Download and Patch Script (Audio, WARP, Node, VSCode)
           $scriptName = "EnigMano-GCRD-Instance.ps1"
           Invoke-WebRequest -Uri "https://gitlab.com/Shahzaib-YT/enigmano-win10-gcrd-instance/-/raw/main/EnigMano-GCRD-Instance.ps1" -OutFile $scriptName -UseBasicParsing
           
           $content = Get-Content $scriptName -Raw
-          $content = $content -replace 'Fail "Phase Audio', 'Write-Warning "⚠️ Skipped Audio'
+          $content = $content -replace 'Fail "Phase Audio', 'Write-Warning "⚠️ Audio Skipped'
+          $content = $content -replace 'Fail "Phase WARP', 'Write-Warning "⚠️ WARP Skipped'
+          $content = $content -replace 'Fail "Phase Node', 'Write-Warning "⚠️ Node Skipped'
+          $content = $content -replace 'Fail "Phase Visual', 'Write-Warning "⚠️ VSCode Skipped'
           Set-Content -Path $scriptName -Value $content
 
-          # 3. Start Host (This happens within seconds of workflow start)
-          Write-Host "🚀 Launching GCRD immediately to prevent token expiry..."
+          # 3. Start Host
+          Write-Host "🚀 Launching GCRD..."
           powershell.exe -ExecutionPolicy Bypass -File ".\$scriptName" `
-            -Code ($env:RAW_CODE) `
-            -Pin ($env:PIN_INPUT) `
-            -GateSecret ($env:EnigMano_Access_Token)
+            -Code ($env:RAW_CODE) -Pin ($env:PIN_INPUT) -GateSecret ($env:EnigMano_Access_Token)
 
       - name: "🐍 Step 2: Force Python 3.14.2"
         run: |
@@ -58,20 +59,30 @@ jobs:
               $env:PATH = "$pyDir;$pyDir\Scripts;$CleanedPath"
               echo "$pyDir" >> $env:GITHUB_PATH
               echo "$pyDir\Scripts" >> $env:GITHUB_PATH
-              Write-Host "✅ Python 3.14.2 Active"
           }
 
-      - name: "📦 Step 3: Install Python Tools & Playwright"
+      - name: "📦 Step 3: Python Tools & Playwright"
         run: |
           & $env:PY_EXE -m pip install --upgrade pip
           & $env:PY_EXE -m pip install requests playwright httpx[http2]
           & $env:PY_EXE -m playwright install chromium
-          Write-Host "✅ Python tools ready."
 
-      - name: "🛡️ Step 4: Install Proton VPN (Silent)"
+      - name: "🛡️ Step 4: Proton VPN (Silent)"
         run: |
           $vpnPath = Join-Path $env:TEMP "ProtonVPN_Setup.exe"
           Invoke-WebRequest -Uri $env:PROTON_URL -OutFile $vpnPath -UseBasicParsing
-          Write-Host "⚙️ Installing VPN..."
           Start-Process -FilePath $vpnPath -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
-          Write-Host "✅ Proton VPN Installed."
+          Write-Host "✅ VPN Installed."
+
+      - name: "⏳ Step 5: Keep Alive (6 Hours)"
+        run: |
+          Write-Host "==============================================="
+          Write-Host "🚀 ALL SYSTEMS READY!"
+          Write-Host "Python 3.14.2 is set. Proton VPN is installed."
+          Write-Host "The session is now LIVE for 6 hours."
+          Write-Host "==============================================="
+          # This loop keeps the workflow running so the RDP doesn't close
+          for ($i=1; $i -le 360; $i++) {
+              Write-Host "Session active... Minute: $i/360"
+              Start-Sleep -Seconds 60
+          }
