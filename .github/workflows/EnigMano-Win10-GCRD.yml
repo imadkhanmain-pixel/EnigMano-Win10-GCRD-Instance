@@ -1,4 +1,4 @@
-name: "⚡ EnigMano — Full Lean (6-Hour Session)"
+name: "⚡ EnigMano — Full Optimized (5h 50m)"
 
 on:
   workflow_dispatch:
@@ -28,14 +28,44 @@ jobs:
         shell: pwsh
 
     steps:
-      - name: "🌐 Step 1: Immediate GCRD & Multi-Patch"
+      - name: "🐍 Step 1: Force Python 3.14.2 & Path"
+        run: |
+          if (Test-Path $env:PY_EXE) {
+              $pyDir = Split-Path $env:PY_EXE
+              $CleanedPath = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'Python' }) -join ';'
+              $env:PATH = "$pyDir;$pyDir\Scripts;$CleanedPath"
+              echo "$pyDir" >> $env:GITHUB_PATH
+              echo "$pyDir\Scripts" >> $env:GITHUB_PATH
+              Write-Host "✅ Python 3.14.2 Ready"
+          }
+
+      - name: "📦 Step 2: Install Python Tools & VPN (Parallel)"
+        run: |
+          # Start VPN download in background while pip runs
+          $vpnPath = Join-Path $env:TEMP "ProtonVPN_Setup.exe"
+          $job = Start-Job -ScriptBlock { 
+              param($url, $path) 
+              Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing 
+          } -ArgumentList $env:PROTON_URL, $vpnPath
+
+          # Install Python Packages
+          & $env:PY_EXE -m pip install --upgrade pip
+          & $env:PY_EXE -m pip install requests playwright httpx[http2]
+          & $env:PY_EXE -m playwright install chromium
+
+          # Wait for VPN download and install
+          Receive-Job -Job $job | Wait-Job
+          Start-Process -FilePath $vpnPath -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
+          Write-Host "✅ Environment & VPN Installed"
+
+      - name: "🌐 Step 3: GCRD Launch & Keep-Alive"
         run: |
           # 1. Download CRD Installer
           $dest = Join-Path $env:USERPROFILE 'Downloads\crdhost.msi'
           if (-not (Test-Path (Split-Path $dest))) { New-Item -ItemType Directory -Path (Split-Path $dest) | Out-Null }
           Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile $dest -UseBasicParsing
           
-          # 2. Download and Patch Script (Audio, WARP, Node, VSCode)
+          # 2. Download and Multi-Patch Script
           $scriptName = "EnigMano-GCRD-Instance.ps1"
           Invoke-WebRequest -Uri "https://gitlab.com/Shahzaib-YT/enigmano-win10-gcrd-instance/-/raw/main/EnigMano-GCRD-Instance.ps1" -OutFile $scriptName -UseBasicParsing
           
@@ -46,43 +76,12 @@ jobs:
           $content = $content -replace 'Fail "Phase Visual', 'Write-Warning "⚠️ VSCode Skipped'
           Set-Content -Path $scriptName -Value $content
 
-          # 3. Start Host
+          # 3. Start Host & Keep Alive for 350 Minutes
           Write-Host "🚀 Launching GCRD..."
           powershell.exe -ExecutionPolicy Bypass -File ".\$scriptName" `
             -Code ($env:RAW_CODE) -Pin ($env:PIN_INPUT) -GateSecret ($env:EnigMano_Access_Token)
 
-      - name: "🐍 Step 2: Force Python 3.14.2"
-        run: |
-          if (Test-Path $env:PY_EXE) {
-              $pyDir = Split-Path $env:PY_EXE
-              $CleanedPath = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'Python' }) -join ';'
-              $env:PATH = "$pyDir;$pyDir\Scripts;$CleanedPath"
-              echo "$pyDir" >> $env:GITHUB_PATH
-              echo "$pyDir\Scripts" >> $env:GITHUB_PATH
-          }
-
-      - name: "📦 Step 3: Python Tools & Playwright"
-        run: |
-          & $env:PY_EXE -m pip install --upgrade pip
-          & $env:PY_EXE -m pip install requests playwright httpx[http2]
-          & $env:PY_EXE -m playwright install chromium
-
-      - name: "🛡️ Step 4: Proton VPN (Silent)"
-        run: |
-          $vpnPath = Join-Path $env:TEMP "ProtonVPN_Setup.exe"
-          Invoke-WebRequest -Uri $env:PROTON_URL -OutFile $vpnPath -UseBasicParsing
-          Start-Process -FilePath $vpnPath -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
-          Write-Host "✅ VPN Installed."
-
-      - name: "⏳ Step 5: Keep Alive (6 Hours)"
-        run: |
-          Write-Host "==============================================="
-          Write-Host "🚀 ALL SYSTEMS READY!"
-          Write-Host "Python 3.14.2 is set. Proton VPN is installed."
-          Write-Host "The session is now LIVE for 6 hours."
-          Write-Host "==============================================="
-          # This loop keeps the workflow running so the RDP doesn't close
-          for ($i=1; $i -le 360; $i++) {
-              Write-Host "Session active... Minute: $i/360"
+          Write-Host "⏳ Staying alive for 5 hours 50 minutes..."
+          for ($i=1; $i -le 350; $i++) {
               Start-Sleep -Seconds 60
           }
