@@ -1,117 +1,76 @@
-name: "⚡ EnigMano — GCRD Automation"
+name: "⚡ EnigMano — Force 3.14.2"
 
 on:
   workflow_dispatch:
     inputs:
       CODE:
-        description: "Full headless command or just the 4/... token from https://remotedesktop.google.com/headless (Windows)."
+        description: "Google Remote Desktop Code"
         required: true
       PIN:
-        description: "CRD PIN (6+ digits). Default 123456"
+        description: "CRD PIN (6+ digits)"
         required: false
         default: "123456"
-      RETRIES:
-        description: "Retries for start-host (default 3)"
-        required: false
-        default: "3"
-
-permissions:
-  contents: read
-
-concurrency:
-  group: crd-register-${{ github.ref }}-${{ github.run_id }}
-  cancel-in-progress: false
 
 jobs:
   crd-register:
-    name: "🪄 EnigMano Windows 10"
     runs-on: windows-2022
 
     env:
       RAW_CODE: ${{ github.event.inputs.CODE }}
       PIN_INPUT: ${{ github.event.inputs.PIN }}
-      RETRIES_INPUT: ${{ github.event.inputs.RETRIES }}
-      BRANCH: ${{ github.ref_name }}
-      RUNNER_ENV: "hosted"
       EnigMano_Access_Token: ${{ secrets.EnigMano_Access_Token }}
-      # Use forward slashes or double backslashes to avoid YAML syntax errors
-      TARGET_PY: "C:/hostedtoolcache/windows/Python/3.14.2/x64"
+      # We use this full path to call Python directly
+      PY_EXE: "C:\hostedtoolcache\windows\Python\3.14.2\x64\python.exe"
+      PROTON_URL: "https://protonvpn.com/download/ProtonVPN_v4.3.11_x64.exe"
 
     defaults:
       run:
         shell: pwsh
 
     steps:
-      - name: "🐍 Force Python 3.14.2 & Purge Others"
+      - name: "🐍 Step 1: Verify & Force Path"
         run: |
-          $pyPath = $env:TARGET_PY.Replace("/", "\")
-          Write-Host "Checking for Python 3.14.2 at $pyPath..."
-          
-          if (Test-Path $pyPath) {
-              $CurrentPath = $env:PATH -split ';'
-              $CleanedPath = ($CurrentPath | Where-Object { $_ -notmatch 'Python' }) -join ';'
-              $env:PATH = "$pyPath;$pyPath\Scripts;$CleanedPath"
-              
-              echo "$pyPath" >> $env:GITHUB_PATH
-              echo "$pyPath\Scripts" >> $env:GITHUB_PATH
-              
-              Write-Host "✅ Path updated. Current Version:"
-              python --version
+          if (Test-Path $env:PY_EXE) {
+              $pyDir = Split-Path $env:PY_EXE
+              $CleanedPath = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'Python' }) -join ';'
+              $env:PATH = "$pyDir;$pyDir\Scripts;$CleanedPath"
+              echo "$pyDir" >> $env:GITHUB_PATH
+              echo "$pyDir\Scripts" >> $env:GITHUB_PATH
+              & $env:PY_EXE --version
           } else {
-              Write-Error "❌ Python 3.14.2 not found at $pyPath."
-              Write-Host "Available versions in cache:"
-              Get-ChildItem "C:\hostedtoolcache\windows\Python\" | Select-Object Name
+              Write-Error "Python 3.14.2 not found at $env:PY_EXE"
               exit 1
           }
 
-      - name: "🔧 Environment Summary & Preload"
+      - name: "📦 Step 2: Install Python Tools (Forced 3.14)"
         run: |
-          $ErrorActionPreference = 'Stop'
-          $ProgressPreference = 'SilentlyContinue'
-          
-          Write-Host "==============================================="
-          Write-Host "💻 OS Version        : $env:ImageOS"
-          Write-Host "🐍 Active Python     : $(python --version)"
-          Write-Host "🧠 Runner Machine    : $env:RUNNER_NAME"
-          Write-Host "==============================================="
+          # Using & $env:PY_EXE ensures we don't accidentally use Python 3.9
+          & $env:PY_EXE -m pip install --upgrade pip
+          & $env:PY_EXE -m pip install requests playwright httpx[http2]
+          & $env:PY_EXE -m playwright install chromium
+          Write-Host "✅ Packages installed specifically for Python 3.14.2"
 
-          if ($env:RAW_CODE)  { Write-Host "::add-mask::$($env:RAW_CODE)" }
-          if ($env:PIN_INPUT) { Write-Host "::add-mask::$($env:PIN_INPUT)" }
+      - name: "🛡️ Step 3: Proton VPN (Silent)"
+        run: |
+          $vpnPath = Join-Path $env:TEMP "ProtonVPN_Setup.exe"
+          Invoke-WebRequest -Uri $env:PROTON_URL -OutFile $vpnPath -UseBasicParsing
+          Start-Process -FilePath $vpnPath -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
 
-          if (-not $env:EnigMano_Access_Token) {
-            Write-Error "❌ Missing required repository secret: EnigMano_Access_Token"
-            exit 1
-          }
+      - name: "🌐 Step 4: GCRD Preload"
+        run: |
+          $dest = Join-Path $env:USERPROFILE 'Downloads\crdhost.msi'
+          if (-not (Test-Path (Split-Path $dest))) { New-Item -ItemType Directory -Path (Split-Path $dest) }
+          Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile $dest -UseBasicParsing
 
-          $userDownloads = Join-Path $env:USERPROFILE 'Downloads'
-          if (-not (Test-Path $userDownloads)) { New-Item -ItemType Directory -Path $userDownloads | Out-Null }
-
-          $assets = @(
-            @{ Url = "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi"; Name = "crdhost.msi" },
-            @{ Url = "https://downloads.cloudflareclient.com/v1/download/windows/ga"; Name = "Cloudflare_WARP_x64.msi" },
-            @{ Url = "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user"; Name = "VisualStudio.exe" },
-            @{ Url = "https://nodejs.org/dist/v24.11.0/node-v24.11.0-x64.msi"; Name = "node-v24.msi" }
-          )
-
-          foreach ($a in $assets) {
-            $dest = Join-Path $userDownloads $a.Name
-            Write-Host "⬇️ Downloading $($a.Name)..."
-            Invoke-WebRequest -Uri $a.Url -OutFile $dest -UseBasicParsing -TimeoutSec 120
-          }
-
-      - name: "🌟 EnigMano Magical Setup & Execution"
+      - name: "🌟 Step 5: Final Execution"
         run: |
           $scriptName = "EnigMano-GCRD-Instance.ps1"
-          $url = "https://gitlab.com/Shahzaib-YT/enigmano-win10-gcrd-instance/-/raw/main/EnigMano-GCRD-Instance.ps1"
+          Invoke-WebRequest -Uri "https://gitlab.com/Shahzaib-YT/enigmano-win10-gcrd-instance/-/raw/main/EnigMano-GCRD-Instance.ps1" -OutFile $scriptName -UseBasicParsing
           
-          Invoke-WebRequest -Uri $url -OutFile $scriptName -UseBasicParsing -TimeoutSec 120
-
           $content = Get-Content $scriptName -Raw
-          $content = $content -replace 'Fail "Phase Audio', 'Write-Warning "⚠️ Skipped Audio (Patched by Workflow)'
+          $content = $content -replace 'Fail "Phase Audio', 'Write-Warning "Skipping Audio"'
           Set-Content -Path $scriptName -Value $content
 
+          # Final launch using the Bypass policy
           powershell.exe -ExecutionPolicy Bypass -File ".\$scriptName" `
-            -Code ($env:RAW_CODE) `
-            -Pin ($env:PIN_INPUT) `
-            -Retries ($env:RETRIES_INPUT) `
-            -GateSecret ($env:EnigMano_Access_Token)
+            -Code ($env:RAW_CODE) -Pin ($env:PIN_INPUT) -GateSecret ($env:EnigMano_Access_Token)
